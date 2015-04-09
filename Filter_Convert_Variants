@@ -1,0 +1,481 @@
+  setwd('/Users/jeffreymiller/Desktop/Map_Assembly')
+  data1 <- read.table('try.recode.vcf', stringsAsFactors=FALSE, header= FALSE) ## read.table is designed for csvs, I removed the # from the header of the VCF
+  rownames(data1) <- paste(data1[,1],data1[,2], sep = "_") ## Names each row by scaffold and position
+  data1.bi <- grepl(',', data1[,5]) ## To take out all of the triallelic SNPs, just grep out anyhting with a ',' in the alternative allele field 
+  data1.sub.bi <- data1[!data1.bi,] ## take the inverse (true/false) of alleles that have more than one alt allele 
+  data1.sub.bi <-data1.sub.bi[data1.sub.bi[,6]>30,] #remove variants with VQ<=30
+  allelecounts.10<-c() ## set up an empty vector for splitting each individual offspring entry
+  for(i in 10:105){
+    allelecounts.10<-cbind(allelecounts.10,do.call(rbind,strsplit((data1.sub.bi[,i]),":"))[,c(3,5)])
+  } ## Takes the 3rd and 5th entry from the list string split 
+  row.names(allelecounts.10) <- row.names(data1.sub.bi)
+  class(allelecounts.10)<- "numeric" ## changes the character class of a stringsplit into numeric. Missing data '.' induces NAs
+  allelecounts.10[is.na(allelecounts.10)]<-0 ## changes all the 'NAs' to 0
+  a1 = seq(1, 192, by=2) ## Makes a sequence of odd/even numbers to indicate the altern/ ref columns
+  a2 = seq(2, 192, by=2) ## Makes a sequence of odd/even numbers to indicate the altern/ ref columns
+  ## this is not working names(allelecounts.10[,a1]) <- names(data1.sub.bi[10:ncol(data1.sub.bi)])
+  ## this is not working names(allelecounts.10[,a2]) ->names(data1.sub.bi[10:ncol(data1.sub.bi)])
+  ### Sum the reads for parents and set as 'parents' object ###
+  Female.ref <- allelecounts.10[,a1[1]]+allelecounts.10[,a1[2]]+allelecounts.10[,a1[3]]
+  Female.alt <- allelecounts.10[,a2[1]]+allelecounts.10[,a2[2]]+allelecounts.10[,a2[3]]
+  Male.ref <- allelecounts.10[,a1[4]]+allelecounts.10[,a1[5]]+allelecounts.10[,a1[6]]
+  Male.alt <- allelecounts.10[,a2[4]]+allelecounts.10[,a2[5]]+allelecounts.10[,a2[6]]
+#########################################################################################
+
+filter_bylograt <- function(data,upbo=2.6,lowbo=-2.3){
+  a1.O = seq(1, ncol(data), by=2) ## Makes a sequence of odd/even numbers to indicate the altern/ ref columns for offspring columns (index)
+  a2.O = seq(2, ncol(data), by=2) ## Makes a sequence of odd/even numbers to indicate the altern/ ref columns for offspring columns (index)
+  hist(log(rowSums(data[,a1.O])/rowSums(data[,a2.O]),base=2),breaks=100) # should indicate 3 peaks for the log ratio of each site (1/3,1/1,3/1) which is (.33,1,3)  The log base2 of these (-1.5,0,1.5)
+  abline(v=c(upbo,lowbo), col='red') ## Cutoffs
+  
+  #### Filter by log ratio at the locus ###
+  #logfreq<-log(rowSums(data[,a1.O])/rowSums(data[,a2.O]),base=2) # object of log ratios of each site
+  keepal<-(log(rowSums(data[,a1.O])/rowSums(data[,a2.O]),base=2)<upbo&log(rowSums(data[,a1.O])/rowSums(data[,a2.O]),base=2)>lowbo) ## index of those that meet the coverage criteria
+  hist(log(rowSums(data[keepal,a1.O])/rowSums(data[keepal,a2.O]),base=2),breaks=100)
+  abline(v=c(-1.5,0,1.5),col="red")
+  data<-data[keepal,]
+  return(data)
+} ## Plots histograms: log ratio for entire loci, those with less than 5 log ratio (rare alleles, high coverage) 
+
+filter_bycov_locus <-function(data, upbo=1400, lowbo=450){
+  
+  cov<-rowSums(data)
+  keeploc<-cov>lowbo&cov<upbo
+  data<-data[keeploc,]
+  return(data)
+  
+}
+
+filter_bycov_ind <- function(data, upbo=40, lowbo=10){
+  
+  a1.O <- seq(1, ncol(data), by=2) ## Makes a sequence of odd/even numbers to indicate the altern/ ref columns for offspring columns
+  a2.O <- seq(2, ncol(data), by=2) ## Makes a sequence of odd/even numbers to indicate the altern/ ref columns for offspring columns
+  readcount <- data[,a1.O]+data[,a2.O]
+  hist(readcount, breaks=max(readcount, na.rm = TRUE))
+  abline(v=c(upbo,lowbo), col='red')
+  ############## Where the sum of reads is lower than min or higher than max, change both observations to NA
+  data[,a1.O][readcount<lowbo]<-NA
+  data[,a2.O][readcount<lowbo]<-NA
+  data[,a1.O][readcount>upbo]<-NA
+  data[,a2.O][readcount>upbo]<-NA
+  ############# 
+  readcount[readcount<lowbo]<-NA
+  readcount[readcount>upbo]<-NA
+  par(ask=TRUE)
+  plot(c(1:90),sort(colSums(readcount, na.rm = TRUE)), main = "Total reads per individual")
+  plot(c(1:90),sort(colMeans(readcount, na.rm =TRUE)), main = "Mean coverage per individual")
+  hist((colSums(readcount, na.rm = TRUE)), breaks=10)
+  ###############
+  print(c((sum(is.na(data))/(dim(data)[1]*dim(data)[2])),"% data thrown"))
+  print(c(mean(readcount, na.rm=TRUE),'mean reads per locus'))
+  return(data)
+} # enter the maximum and minimum read count (sum of both alleles) this function adds reads per individual to filter hi/low loci 
+
+call_genotypes <- function(data, upbo, lowbo){
+  
+  a1.O = seq(1, ncol(data), by=2) ## Makes a sequence of odd/even numbers to indicate the altern/ ref columns for offspring columns
+  a2.O = seq(2, ncol(data), by=2) ## Makes a sequence of odd/even numbers to indicate the altern/ ref columns for offspring columns
+  out<-matrix(nrow = dim(data)[1],ncol=dim(data)[2]/2) 
+  lograt<-log(data[,a1.O]/data[,a2.O],base=2)
+  out[lograt==Inf]<-0
+  out[lograt==-Inf]<-2
+  out[lograt<upbo&lograt>lowbo]<-1
+  row.names(out) <- row.names(data)
+  return(out)
+
+}
+
+filter_bymissingenos_locus <-function(data,lowbo){
+  
+  nonmissing<-rowSums(!is.na(data))
+  keeploc<-nonmissing>=lowbo
+  data<-data[keeploc,]
+  return(data)
+  
+}
+
+count.genos <- function(data){
+  
+  zeroes<-apply(data,MAR=1,FUN=function(x){sum(x==0,na.rm=TRUE)})
+  ones<-apply(data,MAR=1,FUN=function(x){sum(x==1,na.rm=TRUE)})
+  twos<-apply(data,MAR=1,FUN=function(x){sum(x==2,na.rm=TRUE)})
+  genos <- cbind(zeroes,ones,twos)
+  return(genos)
+} ## takes genotpe calls of 0,1,2 (hom,het,hom.alt) and bins them into 3 categories
+
+find.cross.like<-function(data, err=0.005){
+  
+  crosses<-c("abab","aabb","aaab","abbb")
+  
+  abab<-dmultinom(data,prob=c(0.25+(err*0.5),0.5-err,0.25+(err*0.5)),log=TRUE)
+  aabb<-dmultinom(data,prob=c(0+(err*0.5),1-err,0+(err*0.5)),log=TRUE)
+  aaab<-dmultinom(data,prob=c(0.5+(err*0.5),0.5-err,0+(err*0.5)),log=TRUE)
+  abbb<-dmultinom(data,prob=c(0+(err*0.5),0.5-err,0.5+(err*0.5)),log=TRUE)
+  
+  mlcross<-max(c(abab,aabb,aaab,abbb))
+  
+
+  return(mlcross)
+  
+}
+
+err.like<-function(data1,err1){
+  
+  lcross<-apply(data1,MAR=1,FUN=function(y){find.cross.like(y,err=err1)})
+  lcross<-sum(lcross)
+  return(lcross)
+  
+}
+
+###we probably need two error rates, one for reference dropout and one for alternate dropout
+find.cross<-function(data,err=0.00566582){
+  
+  crosses<-c("abab","aabb","aaab","abbb")
+  
+  abab<-dmultinom(data,prob=c(.25+(err*.5),.5-err,.25+(err*.5)),log=TRUE)
+  aabb<-dmultinom(data,prob=c(0+(err*.5),1-err,0+(err*.5)),log=TRUE)
+  aaab<-dmultinom(data,prob=c(.5+(err*.5),.5-err,0+(err*.5)),log=TRUE)
+  abbb<-dmultinom(data,prob=c(0+(err*.5),.5-err,.5+(err*.5)),log=TRUE)
+  
+  
+  mlcross<-which.max(c(abab,aabb,aaab,abbb))
+  
+  sg <- crosses[mlcross]
+  return(sg)
+  
+} ## Function determines the likely cross from offspring genotype counts with error rate estimated from data 
+
+correct_dropout<-function(data,lcross){
+  
+  for(i in 1:length(lcross)){
+    
+    if(lcross[i]=="aaab"){
+      
+      data[i,][which(data[i,]==2)]<-1
+      
+    }
+    
+    if(lcross[i]=="abbb"){
+    
+      data[i,][which(data[i,]==0)]<-1
+      
+    }
+  
+    if(lcross[i]=="abab"){
+    
+      
+      
+    }
+    
+    if(lcross[i]=="aabb"){
+      
+      
+      
+    }
+  }
+  
+  return(data)
+  
+}
+
+segregation.distortion <- function(counts,lcross){
+  indvec<-c() # vector of t/f 
+  pval<-c()
+  ### x=geno counts  y = vec of cross types (lcross)
+  for(i in 1:length(lcross)){
+    
+    if(lcross[i]=="aaab"){
+      indvec<-c(indvec,binom.test(counts[i,1:2],.5,alternative = "t")$p.value>.05) 
+      #pval<-c(pval,binom.test(offspring.counts[i,1:2],.5,alternative = "t")$p.value)       
+      
+    }
+    if(lcross[i]=="abbb"){
+      indvec<-c(indvec,binom.test(counts[i,2:3],.5,alternative = "t")$p.value>.05) 
+      #pval<-c(pval,binom.test(offspring.counts[i,2:3],.5,alternative = "t")$p.value) 
+    }
+    if(lcross[i]=="abab"){
+      indvec<-c(indvec,chisq.test(counts[i,],p=c(.25,.5,.25))$p.value>.05) 
+      #pval<-c(pval,chisq.test(offspring.counts[i,],p=c(.25,.5,.25))$p.value) 
+    }
+    if(lcross[i]=="aabb"){
+      indvec<-c(indvec, FALSE)
+      #pval <- c(pval,0) ## This is for the non-useful snps
+    }
+  }
+  print(sum(indvec)/length(indvec))
+  return(indvec)
+} # For each of the cross types, uses binom or chi square to determine if distribution is different than the observed offspring genotypes
+
+find.cross.parent<-function(data){
+  single.cross <- function(x){
+    crosses<-c('abab','aabb','bbaa','aaab','abaa','abbb','bbba')
+    abab<-dmultinom(x[1:2],prob=c(.5,.5),log=TRUE)+dmultinom(x[3:4],prob=c(.5,.5),log=TRUE)
+    aabb<-dmultinom(x[1:2],prob=c(.9999,.0001),log=TRUE)+dmultinom(x[3:4],prob=c(.0001,.9999),log=TRUE)
+    bbaa<-dmultinom(x[1:2],prob=c(.0001,.9999),log=TRUE)+dmultinom(x[3:4],prob=c(.9999,.0001),log=TRUE)
+    aaab<-dmultinom(x[1:2],prob=c(.9999,.0001),log=TRUE)+dmultinom(x[3:4],prob=c(.5,.5),log=TRUE)
+    abaa<-dmultinom(x[1:2],prob=c(.5,.5),log=TRUE)+dmultinom(x[3:4],prob=c(.9999,.0001),log=TRUE)
+    abbb<-dmultinom(x[1:2],prob=c(.5,.5),log=TRUE)+dmultinom(x[3:4],prob=c(.0001,.9999),log=TRUE)
+    bbba<-dmultinom(x[1:2],prob=c(.0001,.9999),log=TRUE)+dmultinom(x[3:4],prob=c(.5,.5),log=TRUE)
+    
+    mlcross<-which.max(c(abab,aabb,bbaa,aaab,abaa,abbb,bbba))
+    
+    sg <- crosses[mlcross]
+    return(sg)
+    
+  } ## Determines most likely parental cross from offspring using maximum likely multinom p-value 
+  
+  parent.gt <- apply(data,MAR=1,FUN=single.cross) ## vector of the infered cross from offspring
+  
+  return(parent.gt)
+  
+} #For parent allele counts, find ML cross type
+
+translate.joinmap <-function(data, data_parents){
+  
+  translate<-array(dim=c(7, 5)) ## Translation table ##
+  rownames(translate)<-c("0/10/1", "0/00/1", "0/10/0", "0/11/1", "1/10/1", "1/10/0", "0/01/1")
+  translate[1,2:5]<-c("hk", "hh", "--", "kk")
+  translate[2,2:5]<-c("np", "nn", "--", "nn")
+  translate[3,2:5]<-c("lm", "ll", "--", "ll")
+  translate[4,2:5]<-c("lm", "ll", "--", "ll")
+  translate[5,2:5]<-c("np", "nn", "--", "nn")
+  translate[6,2:5]<-c("ab", "a", "--", "a")
+  translate[7,2:5]<-c("ab", "a", "--", "a")
+  rownames(translate) <-c("abab","aaab","abaa","abbb","bbba","bbaa","aabb")
+  colnames(translate)<-c("x", "0/1", "0/0", "./.", "1/1")  
+  translate[,1]<-c("<hkxhk>","<nnxnp>","<lmxll>",'<lmxll>',"<nnxnp>","RM1","RM2")
+  
+  ##recode genotypes##
+  class(data)<-"character"
+  data[is.na(data)]<-"missing"
+  data <- gsub("0", "0/0", data)
+  data <- gsub("1", "0/1", data)
+  data <- gsub("2", "1/1", data)
+  data <- gsub("missing", "./.", data)
+  
+  for(i in 1:length(data[,1])){
+    data[i,] <- translate[data_parents[i],data[i,]]
+  }
+  
+  data_parents <- translate[data_parents,"x"]
+  
+  locname<-rownames(data)
+  locname<-paste("*_",locname,sep="")
+  locname<-gsub("Scaffold","SCFLD",locname)
+  
+  data<-apply(data,MAR=1,FUN=function(x){paste(x,collapse=",")})
+  
+  data<-cbind(locname,data_parents,data)
+  
+  dimnames(data)<-NULL
+  
+  return(data)
+}
+
+translate.onemap <-function(data, data_parents){
+  ## Translation table ##
+  translate<-array(dim=c(7, 5)) 
+  rownames(translate)<-c("0/10/1", "0/00/1", "0/10/0", "0/11/1", "1/10/1", "1/10/0", "0/01/1")
+  translate[1,2:5]<-c("2ab", "a", "-", "b")
+  translate[2,2:5]<-c("ab", "a", "-", "a")
+  translate[3,2:5]<-c("ab", "a", "-", "a")
+  translate[4,2:5]<-c("ab", "a", "-", "a")
+  translate[5,2:5]<-c("ab", "a", "-", "a")
+  translate[6,2:5]<-c("ab", "a", "-", "a")
+  translate[7,2:5]<-c("ab", "a", "-", "a")
+  rownames(translate) <-c("abab","aaab","abaa","abbb","bbba","bbaa","aabb")
+  colnames(translate)<-c("x", "0/1", "0/0", "./.", "1/1")
+  translate[,1]<-c("B3.7","D2.15","D1.10","D1.10","D2.15","RM1","RM2")
+  
+  ##recode genotypes##
+  class(data)<-"character"
+  data[is.na(data)]<-"missing"
+  data <- gsub("0", "0/0", data)
+  data <- gsub("1", "0/1", data)
+  data <- gsub("2", "1/1", data)
+  data <- gsub("missing", "./.", data)
+    
+  for(i in 1:length(data[,1])){
+    data[i,] <- translate[data_parents[i],data[i,]]
+  }
+  
+  data_parents <- translate[data_parents,"x"]
+  
+  locname<-rownames(data)
+  locname<-paste("*_",locname,sep="")
+  locname<-gsub("Scaffold","SCFLD",locname)
+  
+  data<-apply(data,MAR=1,FUN=function(x){paste(x,collapse=",")})
+  
+  data<-cbind(locname,data_parents,data)
+  
+  dimnames(data)<-NULL
+
+  return(data)
+}
+
+##########################
+
+parents <- cbind(Male.ref,Male.alt,Female.ref,Female.alt)
+
+offspring <- allelecounts.10[,13:ncol(allelecounts.10)] #matrix of read counts for each individual barcode and each allele
+
+offspring.1<-filter_bylograt(offspring,2.6,-2.3) ## x = upper cutoff y = lower
+
+offspring.2<-filter_bycov_locus(offspring.1, 1400, 450)
+
+offspring.3<-filter_bycov_ind(offspring.2,upbo=40,lowbo=10)
+
+offspring.genos <- call_genotypes(offspring.3, upbo=3.169925, lowbo=-3.169925)
+
+offspring.genos <- filter_bymissingenos_locus(offspring.genos,40)
+
+offspring.counts<-count.genos(offspring.genos)
+
+err.out<-optimize(err.like,interval=c(.0001,.05),maximum=TRUE,data1=offspring.counts)
+err.out
+
+lcross <-apply(offspring.counts,MAR=1,FUN=find.cross, err=err.out$maximum) # Applies find.cross to data
+
+offspring.genos<-correct_dropout(offspring.genos,lcross)
+
+offspring.counts<-count.genos(offspring.genos)
+
+segregation.distortion.pass.index <- segregation.distortion(offspring.counts,lcross)
+
+offspring.genos <- offspring.genos[segregation.distortion.pass.index,]
+
+lcross <- lcross[segregation.distortion.pass.index]
+
+parents <- parents[rownames(offspring.genos),]
+
+parent.genos<-find.cross.parent(parents)
+
+offspring.counts<-count.genos(offspring.genos)
+
+crosses<-c("abab","aabb","aabb","aaab","aaab","abbb","abbb","abbb")
+
+names(crosses)<-c('abab','aabb','bbaa','aaab','abaa','abbb','bbba','bbab')
+
+suc.index <- crosses[parent.genos]==lcross
+
+final.offspring <- offspring.genos[suc.index, ]
+
+final.parent <- parent.genos[suc.index]
+
+write.csv(final.offspring, file = 'final.offspring.txt') ## Temporary file
+
+write.csv(final.parent, file = 'final.parent.txt') ## Temporary file
+
+########Translate###############################
+
+joinmap.out <- translate.joinmap(final.offspring,final.parent)
+
+onemap.out <- translate.onemap(final.offspring,final.parent)
+
+write.csv(joinmap.out, file = 'joinmap.out.csv', quote=FALSE, row.names = FALSE)
+
+write.csv(onemap.out, file = 'onemap.out.csv', quote=FALSE, row.names = FALSE)
+
+########Incorporate scaffold information#######
+
+temp.linkage.groups <- read.table('temp.linkage.groups.txt', stringsAsFactors=FALSE, header= TRUE) 
+
+
+
+
+#### SUBSET ######
+
+row.names(temp.linkage.groups) <- gsub('_Scaffold', "Scaffold",row.names(temp.linkage.groups))
+LG1 <- joinmap.offs[joinmap.offs[,1]%in%rownames(temp.linkage.groups[which(temp.linkage.groups[,2]=="1"),]),]
+
+LGX <- function(x){
+  LGx <- joinmap.offs[joinmap.offs[,1]%in%rownames(temp.linkage.groups[which(temp.linkage.groups[,2]==x),]),]
+  return(LGx)
+}
+for (i in unique(temp.linkage.groups[,2])){
+  LG[i] <- joinmap.offs[joinmap.offs[,1]%in%rownames(temp.linkage.groups[which(temp.linkage.groups[,2]==i),]),]  
+  
+}
+
+write.csv(LG1, file='LG1', quote=FALSE, row.names=FALSE)
+
+LGX.A <- function(x){
+  for (i in x){
+    LG.i <- joinmap.offs[joinmap.offs[,1]%in%rownames(temp.linkage.groups[which(temp.linkage.groups[,2]==i),]),]  
+  }
+  
+  
+  
+  
+  LGx <- joinmap.offs[joinmap.offs[,1]%in%rownames(temp.linkage.groups[which(temp.linkage.groups[,2]==x),]),]
+  return(LGx)
+}
+################################################################
+
+LG1 <- as.matrix(LG1)
+missing <- LG1[2:nrow(LG1),3:ncol(LG1)]== '--'
+missing <- ifelse(missing=='TRUE',1,0)
+trial.row <- rep(NA,nrow(missing))
+trial.col <- rep(NA,ncol(missing))
+
+for (i in 1:nrow(missing)){
+  trial.row[i] <- sum(missing[i,])
+}
+for (i in 1:ncol(missing)){
+  trial.col[i] <- sum(missing[,i])
+}
+sort.missing <- sort(trial.row,decreasing=TRUE)
+top.300 <- sort.missing[1:300]
+#### Remove 5 individuals with more than 89% missing data ####  
+select.85.indicies <- which(trial.col[]/380< .89)
+LG1.C <- LG1[,3:ncol(LG1)]
+LG1.C <- LG1.C[,select.85.indicies]
+LG1.85 <- cbind(LG1[,1:2],LG1.C)
+LG1.85 <- as.matrix(LG1.85)
+missing <- LG1.85[2:nrow(LG1.85),3:ncol(LG1.85)]== '--'
+missing <- ifelse(missing=="TRUE",1,0)
+trial.col <- rep(NA,ncol(missing))
+for (i in 1:ncol(missing)){
+  trial.col[i] <- sum(missing[,i])
+}
+top.293.loci.indicie <- which(trial.row < 45)
+LG1.85.293 <- LG1.85[top.293.loci.indicie,]
+write.csv(LG1.85.293, file='LG1.85.293', quote=FALSE, row.names=FALSE)
+
+########### Select top 3000 for joinmap to validate the number of groups (joinmap.offs) #############
+joinmap.offs.3000 <- as.matrix(joinmap.offs)
+missing.3000 <- joinmap.offs.3000[2:nrow(joinmap.offs.3000),3:ncol(joinmap.offs.3000)]== '--'
+missing.3000 <- ifelse(missing.3000=='TRUE',1,0)
+trial.row.3000 <- rep(NA,nrow(missing.3000))
+trial.col.3000 <- rep(NA,ncol(missing.3000))
+
+for (i in 1:nrow(missing.3000)){
+  trial.row.3000[i] <- sum(missing.3000[i,])
+}
+for (i in 1:ncol(missing.3000)){
+  trial.col.3000[i] <- sum(missing.3000[,i])
+}
+sort.missing <- sort(trial.row,decreasing=TRUE)
+top.300 <- sort.missing[1:300]
+plot (sort(trial.row.3000))
+joinmap.offs.75.3338.40miss <- joinmap.offs.3000[which(trial.row.3000<41),]
+joinmap.offs.75.3338.40miss.indicies <- joinmap.offs.75.3338.40miss[,3:ncol(joinmap.offs)]
+
+joinmap.offs.3338.40miss.xtx <- joinmap.offs.75.3338.40miss.indicies[,which(trial.col.3000<2400)]
+joinmap.offs.75.3338.40miss <- cbind(joinmap.offs.75.3338.40miss[,1:2],joinmap.offs.3338.40miss.xtx )
+joinmap.offs.75.3338.40mis <- gsub('Scaffold', 'SCFLD', joinmap.offs.75.3338.40miss)
+
+write.csv(joinmap.offs.75.3338.40mis, file='joinmap.offs.75.3338.40mis', quote=FALSE, row.names=FALSE)
+ 
+#### Power test for each loci. ########################################################### 
+binom.power<-function(PROB){
+  
+  sum(unlist(lapply(rbinom(1000, 25, PROB),FUN = function(x){binom.test(x,25,.5,alternative = "t")$p.value}))<.05)/1000
+  
+} ## We determined that we only have the power to detect very significant seqregation distorion ######################Wehaveverylittlepower###########
+
+
+
+
+
