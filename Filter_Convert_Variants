@@ -1,3 +1,4 @@
+  ##########
   setwd('/Users/jeffreymiller/Desktop/Map_Assembly')
   data1 <- read.table('try.recode.vcf', stringsAsFactors=FALSE, header= FALSE) ## read.table is designed for csvs, I removed the # from the header of the VCF
   rownames(data1) <- paste(data1[,1],data1[,2], sep = "_") ## Names each row by scaffold and position
