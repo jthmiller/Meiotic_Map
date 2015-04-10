@@ -36,9 +36,11 @@ onemapsub.rec <- rf.2pts(onemapsub)
 #The next step is to pull out all the LOD scores for the recombination frequencies
 
 #table containing numbers for all marker pairs
-pcom3<-(t(combn(1:nmarkers,2)))
-lodout3.1<-((apply(test3.rec$analysis[,,"LODs"],MAR=1,FUN=max)))
-lodout3.2<-lodout3.1[unlist(lapply(pcom3[,2]-2,FUN=acum))+pcom3[,1]]
-lodout3.3<-lodout3.2
-lodout3.3[lodout3.2>10]<-10
-lodout3.3[lodout3.2<3]<-0
+pcom<-(t(combn(1:nmarkers,2)))
+
+#each pair of markers has 4 LOD scores for the four possible phases. get the highest of these four for each marker pair
+lodout.1<-((apply(onemapsub.rec$analysis[,,"LODs"],MAR=1,FUN=max)))
+lodout.2<-lodout.1[unlist(lapply(pcom[,2]-2,FUN=acum))+pcom[,1]]
+lodout.3<-lodout.2
+lodout.3[lodout.2>10]<-10
+lodout.3[lodout.2<3]<-0
