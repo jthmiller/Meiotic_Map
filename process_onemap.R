@@ -35,7 +35,7 @@ onemapsub.rec <- rf.2pts(onemapsub)
 	
 #The next step is to pull out all the LOD scores for the recombination frequencies
 
-#table containing numbers for all marker pairs
+#table containing numbers for all marker pairs. pcom = "pairwise comparisons of markers"
 pcom<-(t(combn(1:nmarkers,2)))
 
 ##internal onemap function used to retrieve data for marker pairs
@@ -60,12 +60,26 @@ plot(NULL,xlim=c(1,nmarkers),ylim=c(1,nmarkers))
 points(pcom[,1],pcom[,2],pch=15,col=rgb(1,0,0,((lodout.3)/10)),cex=.2)
 abline(v=(1:nmarkers)[!duplicated(gsub("(?<=[0-9]_).*","",onemapsub.rec$marnames,perl=TRUE))])
 
-######
+#create a square matrix containing LOD scores. dunno if this one works. didn't run it yet. 
+LODmat<-matrix(nrow=nmarkers,ncol=nmarkers)
+for(i in 1:length(lodout.3)){
+	LODmat[pcom[i,1],pcom[i,2]]<-lodout.3[i]
+	LODmat[pcom[i,2],pcom[i,1]]<-lodout.3[i]
+	}
+names(LODmat)<-list(onemapsub$marnames,onemapsub$marnames)
+
+#####now we calculate the mean LOD score between pairs of scaffolds
+
+######pcomscaf enumerates pairwise comparisons of markers, but contains only scaffold names, not marker positions
 pcomscaf<-cbind(onemapsub.rec$marnames[pcom[,1]],onemapsub.rec$marnames[pcom[,2]])
 pcomscaf<-gsub("_[0-9]*$","",pcomscaf)
 
+###pairscafs contains all pairwise comparisons of scaffolds in the data
 gsub("^","_",first60)->first60.2
 pairscafs<-t(combn(first60.2,2))
+
+####iterate over all pairwise comparisons of scaffolds, calculating mean lod scores. 
+### the number of comparisons should be (nscafs*nscafs-1)/2
 
 meanlod<-c()
 for(i in 1:length(pairscafs[,1])){
@@ -75,4 +89,6 @@ for(i in 1:length(pairscafs[,1])){
 	meanlod<-c(meanlod, mean(lodout.3[lvec1|lvec2]))
 	if((i%%10)==0){print(i)}
 	}
+
+####
 
