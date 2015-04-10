@@ -1,3 +1,6 @@
+###In this script we are testing whether or not we can leverage linkage information from markers already clustered into scaffolds
+###to generate linkage groups. our radseq data are too sparse and error prone to effectively use joinmap or onemap naively
+
 library(onemap)
 library(magrittr)
 
@@ -90,5 +93,52 @@ for(i in 1:length(pairscafs[,1])){
 	if((i%%10)==0){print(i)}
 	}
 
-####
+#### to visualize scaffold linkages... need to play with the rgb settings and/or scale meanlod to get the best results. 
+sn<-(t(combn(1:50,2)))
+plot(sn[,1],sn[,2],pch=15,col=rgb(1,0,0,meanlod/9))
+
+
+
+#####Now create clusters of scaffolds based on the mean LOD scores connecting them. 
+
+###given a scaffold, or set of scaffolds, mean lod scores, and a Xx2 matrix of scaffold pairs, 
+	###this recursive function generates a cluster of all scaffolds connected to at greater than a threshold
+
+growclust<-function(clust, pairwise, lods,thresh=.1){
+	
+	startl<-length(clust)
+	scafs<-rbind(pairwise[pairwise[,1]%in%clust&lods>thresh,], pairwise[pairwise[,2]%in%clust&lods>thresh,])
+	scafs<-unique(as.vector(scafs))
+	if(length(scafs)==0){return(clust)}	
+	clust<-scafs
+	endl<-length(clust)
+	
+	if(startl<endl){growclust(clust,pairwise,lods,thresh)}
+	
+	else{return(clust)}
+	
+	}
+
+lgs<-cbind(gsub("^","_",first60),NA)
+tout<-c()
+lgroup<-1
+
+while(sum(is.na(lgs[,2]))>0){
+	
+	tout<-lgs[is.na(lgs[,2]),1][1]
+	tout<-growclust(tout,pairscafs,meanlod)
+	lgs[lgs[,1]%in%tout,2]<-lgroup
+	lgroup<-lgroup+1
+	
+	}
+
+#####Now we want to reorder the square matrix of LOD scores to see if our scaffold clustering is working well. 
+
+reorder.LODmat<-function(LODmat, lgs){
+	
+	
+	
+	}
+
+
 
