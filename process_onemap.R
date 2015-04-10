@@ -38,9 +38,41 @@ onemapsub.rec <- rf.2pts(onemapsub)
 #table containing numbers for all marker pairs
 pcom<-(t(combn(1:nmarkers,2)))
 
+##internal onemap function used to retrieve data for marker pairs
+acum<-function (w){
+    if (w < 0) 
+        stop("'w' should be equal to or higher than zero")
+    w * (w + 1)/2
+	}	
+
+
 #each pair of markers has 4 LOD scores for the four possible phases. get the highest of these four for each marker pair
 lodout.1<-((apply(onemapsub.rec$analysis[,,"LODs"],MAR=1,FUN=max)))
+
+#reorder and truncate LOD scores
 lodout.2<-lodout.1[unlist(lapply(pcom[,2]-2,FUN=acum))+pcom[,1]]
 lodout.3<-lodout.2
 lodout.3[lodout.2>10]<-10
 lodout.3[lodout.2<3]<-0
+
+#plot LOD scores
+plot(NULL,xlim=c(1,nmarkers),ylim=c(1,nmarkers))
+points(pcom[,1],pcom[,2],pch=15,col=rgb(1,0,0,((lodout.3)/10)),cex=.2)
+abline(v=(1:nmarkers)[!duplicated(gsub("(?<=[0-9]_).*","",onemapsub.rec$marnames,perl=TRUE))])
+
+######
+pcomscaf<-cbind(onemapsub.rec$marnames[pcom[,1]],onemapsub.rec$marnames[pcom[,2]])
+pcomscaf<-gsub("_[0-9]*$","",pcomscaf)
+
+gsub("^","_",first60)->first60.2
+pairscafs<-t(combn(first60.2,2))
+
+meanlod<-c()
+for(i in 1:length(pairscafs[,1])){
+	
+	lvec1<-pcomscaf[,1]==pairscafs[i,1]&pcomscaf[,2]==pairscafs[i,2]
+	lvec2<-pcomscaf[,1]==pairscafs[i,2]&pcomscaf[,2]==pairscafs[i,1]
+	meanlod<-c(meanlod, mean(lodout.3[lvec1|lvec2]))
+	if((i%%10)==0){print(i)}
+	}
+
