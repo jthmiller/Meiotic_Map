@@ -69,7 +69,10 @@ for(i in 1:length(lodout.3)){
 	LODmat[pcom[i,1],pcom[i,2]]<-lodout.3[i]
 	LODmat[pcom[i,2],pcom[i,1]]<-lodout.3[i]
 	}
-names(LODmat)<-list(onemapsub$marnames,onemapsub$marnames)
+dimnames(LODmat)<-list(onemapsub.rec$marnames,onemapsub.rec$marnames)
+
+colfunc<- colorRampPalette(c("white", "red"))
+image(LODmat,zlim=c(3,10),col=colfunc(7))
 
 #####now we calculate the mean LOD score between pairs of scaffolds
 
@@ -94,10 +97,8 @@ for(i in 1:length(pairscafs[,1])){
 	}
 
 #### to visualize scaffold linkages... need to play with the rgb settings and/or scale meanlod to get the best results. 
-sn<-(t(combn(1:50,2)))
+sn<-(t(combn(1:60,2)))
 plot(sn[,1],sn[,2],pch=15,col=rgb(1,0,0,meanlod/9))
-
-
 
 #####Now create clusters of scaffolds based on the mean LOD scores connecting them. 
 
@@ -126,19 +127,40 @@ lgroup<-1
 while(sum(is.na(lgs[,2]))>0){
 	
 	tout<-lgs[is.na(lgs[,2]),1][1]
-	tout<-growclust(tout,pairscafs,meanlod)
+	tout<-growclust(tout,pairscafs,meanlod,thresh=.2)
 	lgs[lgs[,1]%in%tout,2]<-lgroup
 	lgroup<-lgroup+1
 	
 	}
 
+lgs[order(lgs[,2]),]->lgs
+
 #####Now we want to reorder the square matrix of LOD scores to see if our scaffold clustering is working well. 
 
-reorder.LODmat<-function(LODmat, lgs){
+#####this function reorders the square LODmat based on the linkage groups assigned in scaf_links (lgs above)
+reorder.LODmat<-function(marker_LODs, scaf_links){
 	
+	loci<-rownames(marker_LODs)
+	lgs<-unique(scaf_links[,2])
+	ngroups<-length(lgs)
 	
+	neworder<-c()
 	
+	for(i in lgs){
+		
+		scafs<-scaf_links[scaf_links[,2]==i,1]
+		
+		for(j in scafs){
+			
+			neworder<-c(neworder,grep(paste(j,"_",sep=""),loci))
+			
+			}
+		
+		}
+	marker_LODs[neworder,neworder]
 	}
 
-
-
+LODmat2<-reorder.LODmat(LODmat,lgs)
+colfunc<- colorRampPalette(c("white", "red"))
+image(LODmat2,zlim=c(1,10),col=colfunc(10),x=1:nmarkers,y=1:nmarkers)
+abline(v=(1:nmarkers)[!duplicated(gsub("(?<=[0-9]_).*","",rownames(LODmat2),perl=TRUE))])
