@@ -12,7 +12,8 @@ scafnames<-onemapdata[,1]
 gsub("\\*","",scafnames) %>% gsub("_[0-9]*", "",.) -> scafnames
 
 #create an object containing the names of the 60 scaffolds with the largest numbers of markers
-first60<-names(head(sort(table(scafnames),decreasing=TRUE),n=60))
+first60<-names(head(sort(table(scafnames),decreasing=TRUE),n=100))
+nscaf<-length(first60)
 
 #make a new onemap file containing only markers from these 60 scaffolds
 fname<-"onemapsubset.txt"
@@ -97,7 +98,7 @@ for(i in 1:length(pairscafs[,1])){
 	}
 
 #### to visualize scaffold linkages... need to play with the rgb settings and/or scale meanlod to get the best results. 
-sn<-(t(combn(1:60,2)))
+sn<-(t(combn(1:nscaf,2)))
 plot(sn[,1],sn[,2],pch=15,col=rgb(1,0,0,meanlod/9))
 
 #####Now create clusters of scaffolds based on the mean LOD scores connecting them. 
