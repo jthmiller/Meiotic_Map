@@ -1,6 +1,7 @@
 ###In this script we are testing whether or not we can leverage linkage information from markers already clustered into scaffolds
 ###to generate linkage groups. our radseq data are too sparse and error prone to effectively use joinmap or onemap naively
 
+install.packages('/Users/jeffreymiller/Desktop/Map_Assembly/onemap', repos = NULL, type = 'source') # installs from the modified onemap version without tck dependencies
 library(onemap)
 library(magrittr)
 
@@ -94,7 +95,7 @@ for(i in 1:length(pairscafs[,1])){
 	lvec1<-pcomscaf[,1]==pairscafs[i,1]&pcomscaf[,2]==pairscafs[i,2]
 	lvec2<-pcomscaf[,1]==pairscafs[i,2]&pcomscaf[,2]==pairscafs[i,1]
 	meanlod<-c(meanlod, mean(lodout.3[lvec1|lvec2]))
-	if((i%%10)==0){print(i)}
+	if((i%%10)==0){print(i)} ## number of comparisons 
 	}
 
 #### to visualize scaffold linkages... need to play with the rgb settings and/or scale meanlod to get the best results. 
@@ -165,3 +166,14 @@ LODmat2<-reorder.LODmat(LODmat,lgs)
 colfunc<- colorRampPalette(c("white", "red"))
 image(LODmat2,zlim=c(1,10),col=colfunc(10),x=1:nmarkers,y=1:nmarkers)
 abline(v=(1:nmarkers)[!duplicated(gsub("(?<=[0-9]_).*","",rownames(LODmat2),perl=TRUE))])
+
+######### Subset LGs from joinmap.out SNPs and list of scaffold groups #######
+for (i in 1:length(groups)){
+  LG <- subset(lgs, lgs[,2] == groups[i])
+  LG.TF <- scafnames  %in% LG[,1]
+  LG <- joinmap.out[LG.TF,]
+  scaf <- sprintf('LG.%s.csv', unique(lgs[,2])[i])
+  write.csv(LG, file=scaf, quote=FALSE, row.names=FALSE)
+}
+
+
