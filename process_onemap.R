@@ -168,6 +168,22 @@ image(LODmat2,zlim=c(1,10),col=colfunc(10),x=1:nmarkers,y=1:nmarkers)
 abline(v=(1:nmarkers)[!duplicated(gsub("(?<=[0-9]_).*","",rownames(LODmat2),perl=TRUE))])
 
 ######### Subset LGs from joinmap.out SNPs and list of scaffold groups #######
+LGS.O<-read.table("final.offspring.txt",header=TRUE,stringsAsFactors=FALSE, row.names = 1)
+LGS.T<-read.table("final.lgs.txt",header=TRUE,stringsAsFactors=FALSE, row.names = 1 )
+LGS.P<-read.table("final.parent.txt",header=TRUE,stringsAsFactors=FALSE, row.names = 1)
+LGS.T[,2]<- gsub('L', '', LGS.T2[,2]) 
+LGS.T[,3]<- gsub('SCFL', '_SCFL', LGS.T2[,3])
+LGS.T <- cbind(LGS.T[,3],LGS.T[,2])
+LG.T
+
+
+for (i in 1:length(groups)){
+  LG <- subset(LGS.T, LGS.T[,2] == groups[i])
+  LG.TF <- scafnames  %in% LG[,1]
+  LG <- joinmap.out[LG.TF,]
+  scaf <- sprintf('LG.%s.csv', groups[i])
+  write.csv(LG, file=scaf, quote=FALSE, row.names=FALSE)
+}
 for (i in 1:length(groups)){
   LG <- subset(lgs, lgs[,2] == groups[i])
   LG.TF <- scafnames  %in% LG[,1]
@@ -176,4 +192,12 @@ for (i in 1:length(groups)){
   write.csv(LG, file=scaf, quote=FALSE, row.names=FALSE)
 }
 
+groups <- unique(LGS.T[,1])
+for (i in 1:length(groups)){
+  LG <- translate.joinmap(as.matrix(LGS.O[LGS.T[LGS.T[,1]==groups[i],5],]),LGS.P[LGS.T[LGS.T[,1]==groups[i],5],])
+  scaf <- sprintf('LG.%s.csv', groups[i])
+  write.csv(LG, file=scaf, quote=FALSE, row.names=FALSE)
+}
+  
 
+ 
